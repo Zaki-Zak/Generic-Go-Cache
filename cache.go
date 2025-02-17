@@ -1,31 +1,54 @@
 package cache
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
 
-type Cache[K comparable, V any] struct {
-	mu   sync.RWMutex
-	data map[K]V
+type valueWithTimeout[V any] struct {
+	value   V
+	expires time.Time
 }
 
-func New[K comparable, V any]() Cache[K, V] {
+type Cache[K comparable, V any] struct {
+	ttl  time.Duration
+	mu   sync.RWMutex
+	data map[K]valueWithTimeout[V]
+}
+
+func New[K comparable, V any](ttl time.Duration) Cache[K, V] {
 	return Cache[K, V]{
-		data: make(map[K]V),
+		ttl:  ttl,
+		data: make(map[K]valueWithTimeout[V]),
 	}
 }
 
 func (c *Cache[K, V]) Read(key K) (V, bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	var zeroV V
 
 	value, found := c.data[key]
-	return value, found
+	switch {
+	case !found:
+		return zeroV, false
+	case value.expires.Before(time.Now()):
+		delete(c.data, key)
+		return zeroV, false
+	default:
+		return value.value, found
+	}
 }
 
 func (c *Cache[K, V]) Upsert(key K, value V) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.data[key] = value
+	c.data[key] = valueWithTimeout[V]{
+		value:   value,
+		expires: time.Now().Add(c.ttl),
+	}
 	return nil
 }
 
