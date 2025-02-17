@@ -14,7 +14,7 @@ type valueWithTimeout[V any] struct {
 type Cache[K comparable, V any] struct {
 	ttl time.Duration
 
-	mu   sync.RWMutex
+	mu   sync.Mutex
 	data map[K]valueWithTimeout[V]
 
 	maxSize    int
